@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 
 import { ScannerDashboard } from "@/components/scanner/scanner-dashboard"
 import { siteConfig } from "@/config/site"
@@ -15,8 +15,10 @@ export const metadata: Metadata = {
   },
 }
 
-export const viewport = {
+export const viewport: Viewport = {
   colorScheme: "dark",
+  width: "device-width",
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -26,7 +28,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${leguanFontVariables} dark h-full antialiased`}
       style={{ colorScheme: "dark" }}
     >
-      <body className="min-h-full flex flex-col bg-background">{children}</body>
+      <body className="min-h-full flex flex-col bg-background">
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
+        {children}
+      </body>
     </html>
   )
 }

@@ -8,15 +8,35 @@ type ScanProgressProps = {
 }
 
 export function ScanProgressBar({ progress, message }: ScanProgressProps) {
+  const value = Math.round(progress)
+
   return (
-    <div className="surface-panel flex flex-col gap-3 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{message}</span>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {Math.round(progress)}%
+    <section
+      aria-labelledby="scan-progress-label"
+      aria-describedby="scan-progress-message"
+      className="surface-panel flex flex-col gap-3 p-4"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p id="scan-progress-message" className="text-sm font-medium">
+          {message}
+        </p>
+        <span
+          id="scan-progress-label"
+          className="shrink-0 text-xs text-muted-foreground tabular-nums"
+          aria-hidden="true"
+        >
+          {value}%
         </span>
       </div>
-      <Progress value={progress} />
-    </div>
+      <div
+        role="progressbar"
+        aria-valuenow={value}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Scan progress: ${value}%`}
+      >
+        <Progress value={progress} />
+      </div>
+    </section>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import {
   CheckCircleIcon,
   ShieldWarningIcon,
@@ -8,6 +8,7 @@ import {
 } from "@phosphor-icons/react"
 
 import { iconWeight } from "@/components/shared"
+import { ScanOption } from "@/components/scanner/scan-option"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Card,
@@ -46,25 +47,62 @@ function SummaryCard({
   return (
     <div className="surface-panel flex flex-col gap-1 p-4">
       <span className="text-label">{label}</span>
-      <span className={`text-heading text-2xl ${valueClass}`}>{value}</span>
+      <span className={`text-heading text-2xl sm:text-3xl ${valueClass}`}>{value}</span>
     </div>
   )
 }
 
-function LicenseTable({ dependencies }: { dependencies: DependencyLicense[] }) {
-  if (dependencies.length === 0) {
-    return <p className="text-description">No packages match the current filters.</p>
+function LicenseStatus({ dep }: { dep: DependencyLicense }) {
+  if (dep.compliant) {
+    return <span className="text-primary">Compliant</span>
   }
 
+  return <span className="text-destructive">{dep.category}</span>
+}
+
+function LicenseCards({ dependencies }: { dependencies: DependencyLicense[] }) {
   return (
-    <div className="overflow-x-auto">
+    <ul className="flex flex-col gap-3 md:hidden">
+      {dependencies.map((dep) => (
+        <li key={`${dep.name}@${dep.version}`}>
+          <article className="surface-panel flex flex-col gap-2 p-4">
+            <h3 className="break-all font-mono text-xs">{dep.name}</h3>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+              <dt className="text-label">Version</dt>
+              <dd>{dep.version}</dd>
+              <dt className="text-label">License</dt>
+              <dd className="break-words">{dep.license ?? "Unknown"}</dd>
+              <dt className="text-label">Status</dt>
+              <dd>
+                <LicenseStatus dep={dep} />
+              </dd>
+            </dl>
+          </article>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function LicenseTable({ dependencies }: { dependencies: DependencyLicense[] }) {
+  return (
+    <div className="hidden overflow-x-auto md:block">
       <table className="w-full min-w-[40rem] text-left text-sm">
+        <caption className="sr-only">Dependency license compliance results</caption>
         <thead>
           <tr className="border-b border-border text-label">
-            <th className="px-3 py-2 font-medium">Package</th>
-            <th className="px-3 py-2 font-medium">Version</th>
-            <th className="px-3 py-2 font-medium">License</th>
-            <th className="px-3 py-2 font-medium">Status</th>
+            <th scope="col" className="px-3 py-2 font-medium">
+              Package
+            </th>
+            <th scope="col" className="px-3 py-2 font-medium">
+              Version
+            </th>
+            <th scope="col" className="px-3 py-2 font-medium">
+              License
+            </th>
+            <th scope="col" className="px-3 py-2 font-medium">
+              Status
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -74,11 +112,7 @@ function LicenseTable({ dependencies }: { dependencies: DependencyLicense[] }) {
               <td className="px-3 py-2 text-caption">{dep.version}</td>
               <td className="px-3 py-2">{dep.license ?? "Unknown"}</td>
               <td className="px-3 py-2">
-                {dep.compliant ? (
-                  <span className="text-primary">Compliant</span>
-                ) : (
-                  <span className="text-destructive">{dep.category}</span>
-                )}
+                <LicenseStatus dep={dep} />
               </td>
             </tr>
           ))}
@@ -88,7 +122,21 @@ function LicenseTable({ dependencies }: { dependencies: DependencyLicense[] }) {
   )
 }
 
+function LicenseResults({ dependencies }: { dependencies: DependencyLicense[] }) {
+  if (dependencies.length === 0) {
+    return <p className="text-description">No packages match the current filters.</p>
+  }
+
+  return (
+    <>
+      <LicenseCards dependencies={dependencies} />
+      <LicenseTable dependencies={dependencies} />
+    </>
+  )
+}
+
 export function ScanResults({ result }: { result: ScanResult }) {
+  const resultsTitleId = useId()
   const [showAllDependencies, setShowAllDependencies] = useState(false)
   const [hidePlatformPackages, setHidePlatformPackages] = useState(true)
 
@@ -137,42 +185,48 @@ export function ScanResults({ result }: { result: ScanResult }) {
   const hasProblems = secretCount > 0 || licenseIssues > 0 || result.errors.length > 0
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-heading-lg">Results for {result.repo}</h2>
-      </div>
+    <section aria-labelledby={resultsTitleId} className="flex flex-col gap-6">
+      <h2 id={resultsTitleId} className="text-heading-lg break-all sm:text-xl">
+        Results for {result.repo}
+      </h2>
 
       {result.errors.length > 0 ? (
-        <Alert variant="destructive">
+        <Alert variant="destructive" role="alert">
           <AlertTitle>Partial scan errors</AlertTitle>
           <AlertDescription>{result.errors.join(" ")}</AlertDescription>
         </Alert>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard
-          label="Secrets found"
-          value={secretCount}
-          tone={secretCount > 0 ? "danger" : "success"}
-        />
-        <SummaryCard
-          label="License issues"
-          value={licenseIssues}
-          tone={licenseIssues > 0 ? "danger" : "success"}
-        />
-        <SummaryCard
-          label="Dependencies"
-          value={result.license?.summary.total ?? 0}
-        />
-        <SummaryCard
-          label="Commits scanned"
-          value={result.secrets?.commitsScanned ?? 0}
-        />
+      <div
+        className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        role="list"
+        aria-label="Scan summary"
+      >
+        <div role="listitem">
+          <SummaryCard
+            label="Secrets found"
+            value={secretCount}
+            tone={secretCount > 0 ? "danger" : "success"}
+          />
+        </div>
+        <div role="listitem">
+          <SummaryCard
+            label="License issues"
+            value={licenseIssues}
+            tone={licenseIssues > 0 ? "danger" : "success"}
+          />
+        </div>
+        <div role="listitem">
+          <SummaryCard label="Dependencies" value={result.license?.summary.total ?? 0} />
+        </div>
+        <div role="listitem">
+          <SummaryCard label="Commits scanned" value={result.secrets?.commitsScanned ?? 0} />
+        </div>
       </div>
 
       {!hasProblems ? (
         <Alert>
-          <CheckCircleIcon weight={iconWeight} />
+          <CheckCircleIcon weight={iconWeight} aria-hidden="true" />
           <AlertTitle>No issues detected</AlertTitle>
           <AlertDescription>
             No non-compliant licenses or leaked secrets were found in the selected scan scope.
@@ -180,10 +234,18 @@ export function ScanResults({ result }: { result: ScanResult }) {
         </Alert>
       ) : null}
 
-      <Tabs defaultValue={result.license ? "licenses" : "secrets"}>
-        <TabsList>
-          {result.license ? <TabsTrigger value="licenses">Licenses</TabsTrigger> : null}
-          {result.secrets ? <TabsTrigger value="secrets">Secrets</TabsTrigger> : null}
+      <Tabs defaultValue={result.license ? "licenses" : "secrets"} className="gap-4">
+        <TabsList className="h-auto w-full max-w-full overflow-x-auto">
+          {result.license ? (
+            <TabsTrigger value="licenses" className="min-h-10 min-w-[7rem] flex-none sm:flex-1">
+              Licenses
+            </TabsTrigger>
+          ) : null}
+          {result.secrets ? (
+            <TabsTrigger value="secrets" className="min-h-10 min-w-[7rem] flex-none sm:flex-1">
+              Secrets
+            </TabsTrigger>
+          ) : null}
         </TabsList>
 
         {result.license ? (
@@ -191,7 +253,7 @@ export function ScanResults({ result }: { result: ScanResult }) {
             <Card>
               <CardHeader>
                 <CardTitle>License compliance</CardTitle>
-                <CardDescription>
+                <CardDescription className="break-words">
                   Repository license: {result.license.repoLicense ?? "Unknown"}
                   {result.license.manifestFiles.length > 0
                     ? ` · Manifests: ${result.license.manifestFiles.join(", ")}`
@@ -200,46 +262,49 @@ export function ScanResults({ result }: { result: ScanResult }) {
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 {result.license.issues.length > 0 ? (
-                  <Alert variant="destructive">
-                    <WarningCircleIcon weight={iconWeight} />
+                  <Alert variant="destructive" role="alert">
+                    <WarningCircleIcon weight={iconWeight} aria-hidden="true" />
                     <AlertTitle>Compliance issues</AlertTitle>
                     <AlertDescription>{result.license.issues.join(" ")}</AlertDescription>
                   </Alert>
                 ) : null}
 
                 {licenseGroups.length > 0 ? (
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <div
+                    className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
+                    role="list"
+                    aria-label="License issue groups"
+                  >
                     {licenseGroups.map(([license, count]) => (
-                      <div key={license} className="surface-panel flex flex-col gap-1 p-3">
+                      <div
+                        key={license}
+                        role="listitem"
+                        className="surface-panel flex flex-col gap-1 p-3"
+                      >
                         <span className="text-label">{count} packages</span>
-                        <span className="text-sm">{license}</span>
+                        <span className="break-words text-sm">{license}</span>
                       </div>
                     ))}
                   </div>
                 ) : null}
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={showAllDependencies}
-                      onChange={(event) => setShowAllDependencies(event.target.checked)}
-                      className="size-4 rounded border border-input"
-                    />
-                    Show all dependencies
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={hidePlatformPackages}
-                      onChange={(event) => setHidePlatformPackages(event.target.checked)}
-                      className="size-4 rounded border border-input"
-                    />
-                    Hide optional platform binaries
-                  </label>
-                </div>
+                <fieldset className="flex flex-col gap-3 border-0 p-0">
+                  <legend className="text-sm font-medium">Filters</legend>
+                  <ScanOption
+                    id="show-all-dependencies"
+                    label="Show all dependencies"
+                    checked={showAllDependencies}
+                    onCheckedChange={setShowAllDependencies}
+                  />
+                  <ScanOption
+                    id="hide-platform-packages"
+                    label="Hide optional platform binaries"
+                    checked={hidePlatformPackages}
+                    onCheckedChange={setHidePlatformPackages}
+                  />
+                </fieldset>
 
-                <LicenseTable dependencies={licenseDependencies} />
+                <LicenseResults dependencies={licenseDependencies} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -259,40 +324,54 @@ export function ScanResults({ result }: { result: ScanResult }) {
                 {result.secrets.findings.length === 0 ? (
                   <p className="text-description">No secrets detected in commit diffs.</p>
                 ) : (
-                  <div className="flex max-h-[32rem] flex-col gap-3 overflow-y-auto">
+                  <ul className="flex max-h-[32rem] flex-col gap-3 overflow-y-auto pr-1">
                     {result.secrets.findings.map((finding) => (
-                      <div
-                        key={finding.id}
-                        className="surface-panel flex flex-col gap-2 p-4"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <ShieldWarningIcon
-                            weight={iconWeight}
-                            className={`size-4 ${severityStyles[finding.severity]}`}
-                          />
-                          <span className="text-title">{finding.rule}</span>
-                          <span
-                            className={`text-label uppercase ${severityStyles[finding.severity]}`}
-                          >
-                            {finding.severity}
-                          </span>
-                        </div>
-                        <p className="font-mono text-sm">{finding.redacted}</p>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption">
-                          <span>{finding.file}</span>
-                          <span>Line {finding.line}</span>
-                          <span>{finding.commitSha.slice(0, 7)}</span>
-                        </div>
-                        <p className="text-caption">{finding.commitMessage}</p>
-                      </div>
+                      <li key={finding.id}>
+                        <article
+                          className="surface-panel flex flex-col gap-2 p-4"
+                          aria-labelledby={`finding-${finding.id}-title`}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <ShieldWarningIcon
+                              weight={iconWeight}
+                              className={`size-4 ${severityStyles[finding.severity]}`}
+                              aria-hidden="true"
+                            />
+                            <h3 id={`finding-${finding.id}-title`} className="text-title">
+                              {finding.rule}
+                            </h3>
+                            <span
+                              className={`text-label uppercase ${severityStyles[finding.severity]}`}
+                            >
+                              {finding.severity}
+                            </span>
+                          </div>
+                          <p className="break-all font-mono text-sm">{finding.redacted}</p>
+                          <dl className="flex flex-col gap-1 text-caption sm:flex-row sm:flex-wrap sm:gap-x-4">
+                            <div>
+                              <dt className="sr-only">File</dt>
+                              <dd className="break-all">{finding.file}</dd>
+                            </div>
+                            <div>
+                              <dt className="sr-only">Line</dt>
+                              <dd>Line {finding.line}</dd>
+                            </div>
+                            <div>
+                              <dt className="sr-only">Commit</dt>
+                              <dd>{finding.commitSha.slice(0, 7)}</dd>
+                            </div>
+                          </dl>
+                          <p className="text-caption">{finding.commitMessage}</p>
+                        </article>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
         ) : null}
       </Tabs>
-    </div>
+    </section>
   )
 }

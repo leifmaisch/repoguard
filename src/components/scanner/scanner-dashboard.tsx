@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { MagnifyingGlassIcon } from "@phosphor-icons/react"
 
 import { iconWeight } from "@/components/shared"
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { ScanResult } from "@/lib/scanner/types"
 
+import { ScanOption } from "./scan-option"
 import { ScanProgressBar } from "./scan-progress"
 import { ScanResults } from "./scan-results"
 
@@ -74,6 +75,11 @@ async function consumeScanStream(
 }
 
 export function ScannerDashboard() {
+  const formTitleId = useId()
+  const tokenHintId = useId()
+  const commitHintId = useId()
+  const statusRegionId = useId()
+
   const [repo, setRepo] = useState("")
   const [token, setToken] = useState("")
   const [commitLimit, setCommitLimit] = useState("30")
@@ -127,24 +133,38 @@ export function ScannerDashboard() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
+    <main
+      id="main-content"
+      className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:px-6 sm:py-10"
+    >
       <header>
-        <h1 className="text-heading-xl">{siteConfig.name}</h1>
+        <h1 className="text-heading-xl sm:text-2xl">{siteConfig.name}</h1>
       </header>
 
       <Card>
         <CardHeader>
-          <CardTitle>Repository scan</CardTitle>
+          <CardTitle id={formTitleId}>Repository scan</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <form
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-5"
+            aria-labelledby={formTitleId}
+            aria-busy={loading}
+          >
             <div className="grid gap-2">
               <Label htmlFor="repo">Repository</Label>
               <Input
                 id="repo"
+                name="repo"
                 placeholder="owner/repo or https://github.com/owner/repo"
                 value={repo}
                 onChange={(event) => setRepo(event.target.value)}
+                autoComplete="url"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                inputMode="url"
                 required
               />
             </div>
@@ -153,69 +173,85 @@ export function ScannerDashboard() {
               <Label htmlFor="token">GitHub token (optional)</Label>
               <Input
                 id="token"
+                name="token"
                 type="password"
                 placeholder="ghp_..."
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
                 autoComplete="off"
+                aria-describedby={tokenHintId}
               />
-              <p className="text-caption">
+              <p id={tokenHintId} className="text-caption">
                 Used only for this request. Not stored on the server.
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={scanLicense}
-                  onChange={(event) => setScanLicense(event.target.checked)}
-                  className="size-4 rounded border border-input"
-                />
-                License and dependency compliance
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={scanSecrets}
-                  onChange={(event) => setScanSecrets(event.target.checked)}
-                  className="size-4 rounded border border-input"
-                />
-                Commit secret scanner
-              </label>
-            </div>
+            <fieldset className="grid gap-3 border-0 p-0 sm:grid-cols-2">
+              <legend className="mb-1 text-sm font-medium">Scan options</legend>
+              <ScanOption
+                id="scan-license"
+                label="License and dependency compliance"
+                checked={scanLicense}
+                onCheckedChange={setScanLicense}
+              />
+              <ScanOption
+                id="scan-secrets"
+                label="Commit secret scanner"
+                checked={scanSecrets}
+                onCheckedChange={setScanSecrets}
+              />
+            </fieldset>
 
-            <div className="grid gap-2 sm:max-w-xs">
+            <div className="grid gap-2">
               <Label htmlFor="commitLimit">Commits to scan</Label>
               <Input
                 id="commitLimit"
+                name="commitLimit"
                 type="number"
                 min={1}
                 max={100}
                 value={commitLimit}
                 onChange={(event) => setCommitLimit(event.target.value)}
                 disabled={!scanSecrets}
+                aria-describedby={commitHintId}
+                className="w-full sm:max-w-xs"
               />
+              <p id={commitHintId} className="text-caption">
+                {scanSecrets
+                  ? "Scan recent commit diffs for leaked secrets."
+                  : "Enable commit secret scanner to configure commit count."}
+              </p>
             </div>
 
-            <Button type="submit" disabled={loading || (!scanLicense && !scanSecrets)}>
-              <MagnifyingGlassIcon weight={iconWeight} className="size-4" />
+            <Button
+              type="submit"
+              disabled={loading || (!scanLicense && !scanSecrets)}
+              className="w-full sm:w-auto"
+            >
+              <MagnifyingGlassIcon weight={iconWeight} className="size-4" aria-hidden="true" />
               {loading ? "Scanning..." : "Run scan"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      {loading ? <ScanProgressBar progress={progress} message={progressMessage} /> : null}
+      <div
+        id={statusRegionId}
+        aria-live="polite"
+        aria-atomic="true"
+        className="flex flex-col gap-6"
+      >
+        {loading ? <ScanProgressBar progress={progress} message={progressMessage} /> : null}
 
-      {error ? (
-        <Alert variant="destructive">
-          <AlertTitle>Scan failed</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
+        {error ? (
+          <Alert variant="destructive" role="alert">
+            <AlertTitle>Scan failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
 
-      {result ? <ScanResults result={result} /> : null}
-    </div>
+        {result ? <ScanResults result={result} /> : null}
+      </div>
+    </main>
   )
 }
