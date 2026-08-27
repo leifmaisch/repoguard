@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 
 import { runScan, scanRequestSchema } from "@/lib/scanner/run-scan"
+import {
+  getErrorStatusCode,
+  getPublicErrorMessage,
+  logScanError,
+} from "@/lib/scanner/sanitize-error"
 
 function createScanStream(body: unknown): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
@@ -29,9 +34,10 @@ function createScanStream(body: unknown): ReadableStream<Uint8Array> {
 
         send({ type: "result", result })
       } catch (error) {
+        logScanError("stream scan", error)
         send({
           type: "error",
-          error: error instanceof Error ? error.message : "Scan failed",
+          error: getPublicErrorMessage(error),
         })
       } finally {
         controller.close()
@@ -41,9 +47,15 @@ function createScanStream(body: unknown): ReadableStream<Uint8Array> {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json()
+  let body: unknown
 
-  if (body?.stream) {
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 })
+  }
+
+  if (body && typeof body === "object" && "stream" in body && body.stream) {
     return new Response(createScanStream(body), {
       headers: {
         "Content-Type": "text/event-stream",
@@ -66,9 +78,10 @@ export async function POST(request: Request) {
     const result = await runScan(parsed.data)
     return NextResponse.json(result)
   } catch (error) {
+    logScanError("scan", error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Scan failed" },
-      { status: 500 }
+      { error: getPublicErrorMessage(error) },
+      { status: getErrorStatusCode(error) }
     )
   }
 }

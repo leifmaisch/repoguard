@@ -4,6 +4,11 @@ import { createGitHubClient } from "@/lib/github/client"
 import { parseGitHubRepo } from "@/lib/github/parse-repo"
 import { scanLicenses } from "@/lib/scanner/license-scanner"
 import { DEFAULT_ALLOWED_LICENSES } from "@/lib/scanner/licenses"
+import {
+  logScanError,
+  throwPublicScanError,
+  toPublicPartialScanError,
+} from "@/lib/scanner/sanitize-error"
 import { scanSecrets } from "@/lib/scanner/secret-scanner"
 import type { ScanProgressUpdate, ScanResult } from "@/lib/scanner/types"
 
@@ -40,10 +45,9 @@ export async function runScan(
 
   try {
     await octokit.repos.get({ owner, repo })
-  } catch {
-    throw new Error(
-      "Repository not found or inaccessible. Check the URL and provide a token for private repos."
-    )
+  } catch (error) {
+    logScanError("repository lookup", error)
+    throwPublicScanError(error)
   }
 
   onProgress?.({ progress: 15, message: "Repository found" })
@@ -60,9 +64,8 @@ export async function runScan(
         onProgress?.({ progress, message })
       })
     } catch (error) {
-      errors.push(
-        error instanceof Error ? error.message : "License scan failed unexpectedly."
-      )
+      logScanError("license scan", error)
+      errors.push(toPublicPartialScanError(error))
     }
   }
 
@@ -73,9 +76,8 @@ export async function runScan(
         onProgress?.({ progress, message })
       })
     } catch (error) {
-      errors.push(
-        error instanceof Error ? error.message : "Secret scan failed unexpectedly."
-      )
+      logScanError("secret scan", error)
+      errors.push(toPublicPartialScanError(error))
     }
   }
 
