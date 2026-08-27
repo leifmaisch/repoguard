@@ -45,6 +45,32 @@ export function parsePackageJson(content: string): ParsedDependency[] {
   return Array.from(deps.entries()).map(([name, version]) => ({ name, version }))
 }
 
+export function parsePnpmPackageKey(key: string): { name: string; version: string } | null {
+  const base = key.replace(/\(.*$/, "")
+
+  if (base.startsWith("@")) {
+    const versionAt = base.indexOf("@", 1)
+    if (versionAt === -1) {
+      return null
+    }
+
+    return {
+      name: base.slice(0, versionAt),
+      version: base.slice(versionAt + 1),
+    }
+  }
+
+  const versionAt = base.indexOf("@")
+  if (versionAt <= 0) {
+    return null
+  }
+
+  return {
+    name: base.slice(0, versionAt),
+    version: base.slice(versionAt + 1),
+  }
+}
+
 export function parsePnpmLock(content: string): ParsedDependency[] {
   const data = parseYaml(content) as {
     packages?: Record<string, unknown>
@@ -55,11 +81,11 @@ export function parsePnpmLock(content: string): ParsedDependency[] {
 
   if (data.packages) {
     for (const key of Object.keys(data.packages)) {
-      const atIndex = key.lastIndexOf("@")
-      if (atIndex <= 0) continue
-      const name = key.slice(0, atIndex)
-      const version = key.slice(atIndex + 1)
-      deps.set(name, version)
+      const parsed = parsePnpmPackageKey(key)
+      if (!parsed) {
+        continue
+      }
+      deps.set(parsed.name, parsed.version)
     }
   }
 

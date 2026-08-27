@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { MagnifyingGlassIcon, ShieldCheckIcon } from "@phosphor-icons/react"
+import { MagnifyingGlassIcon } from "@phosphor-icons/react"
 
 import { iconWeight } from "@/components/shared"
 import { siteConfig } from "@/config/site"
@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -129,24 +128,13 @@ export function ScannerDashboard() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
-      <header className="flex flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <div className="surface-panel flex size-10 items-center justify-center">
-            <ShieldCheckIcon weight={iconWeight} className="size-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-heading-xl">{siteConfig.name}</h1>
-            <p className="text-description">{siteConfig.description}</p>
-          </div>
-        </div>
+      <header>
+        <h1 className="text-heading-xl">{siteConfig.name}</h1>
       </header>
 
       <Card>
         <CardHeader>
           <CardTitle>Repository scan</CardTitle>
-          <CardDescription>
-            Enter a public GitHub repository or provide a token for private repos.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">

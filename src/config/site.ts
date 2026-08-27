@@ -1,7 +1,6 @@
 export const siteConfig = {
   name: "RepoGuard",
-  description:
-    "Scan GitHub repositories for license compliance, dependency tree issues, and leaked secrets in commit history.",
+  description: "GitHub repository security scanner",
   allowedLicenses: [
     "MIT",
     "Apache-2.0",
@@ -11,5 +10,6 @@ export const siteConfig = {
     "0BSD",
     "Unlicense",
     "CC0-1.0",
+    "MPL-2.0",
   ],
 } as const

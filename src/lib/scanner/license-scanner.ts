@@ -14,52 +14,17 @@ import {
   DEFAULT_ALLOWED_LICENSES,
   isLicenseCompliant,
 } from "@/lib/scanner/licenses"
+import { fetchNpmLicense, mapWithConcurrency } from "@/lib/scanner/npm-registry"
+import { detectRepositoryLicense } from "@/lib/scanner/repo-license"
 import type { DependencyLicense, LicenseScanResult } from "@/lib/scanner/types"
 
-async function fetchNpmLicense(name: string, version: string): Promise<string | null> {
-  try {
-    const encoded = encodeURIComponent(name)
-    const url =
-      version && version !== "*"
-        ? `https://registry.npmjs.org/${encoded}/${version}`
-        : `https://registry.npmjs.org/${encoded}/latest`
-
-    const response = await fetch(url, {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 3600 },
-    })
-
-    if (!response.ok) {
-      return null
-    }
-
-    const data = (await response.json()) as {
-      license?: string | { type?: string }
-      licenses?: Array<string | { type?: string }>
-    }
-
-    if (typeof data.license === "string") {
-      return data.license
-    }
-    if (data.license && typeof data.license === "object" && data.license.type) {
-      return data.license.type
-    }
-    if (Array.isArray(data.licenses) && data.licenses.length > 0) {
-      const first = data.licenses[0]
-      return typeof first === "string" ? first : (first.type ?? null)
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
+const NPM_MANIFESTS = new Set(["package.json", "pnpm-lock.yaml", "package-lock.json"])
 
 async function resolveDependencies(
   octokit: Octokit,
   owner: string,
   repo: string
-): Promise<{ dependencies: ParsedDependency[]; manifestFiles: string[] }> {
+): Promise<{ dependencies: ParsedDependency[]; manifestFiles: string[]; usesNpm: boolean }> {
   const manifestFiles: string[] = []
   const dependencies = new Map<string, string>()
 
@@ -87,6 +52,7 @@ async function resolveDependencies(
 
   return {
     manifestFiles,
+    usesNpm: manifestFiles.some((file) => NPM_MANIFESTS.has(file)),
     dependencies: Array.from(dependencies.entries()).map(([name, version]) => ({
       name,
       version,
@@ -105,13 +71,12 @@ export async function scanLicenses(
 
   let repoLicense: string | null = null
   try {
-    const { data } = await octokit.repos.get({ owner, repo })
-    repoLicense = data.license?.spdx_id ?? null
+    repoLicense = await detectRepositoryLicense(octokit, owner, repo)
   } catch {
     issues.push("Could not fetch repository license metadata from GitHub.")
   }
 
-  const { dependencies, manifestFiles } = await resolveDependencies(octokit, owner, repo)
+  const { dependencies, manifestFiles, usesNpm } = await resolveDependencies(octokit, owner, repo)
 
   if (manifestFiles.length === 0) {
     issues.push("No supported manifest or lock files found in the repository root.")
@@ -119,32 +84,31 @@ export async function scanLicenses(
 
   onProgress?.(25, `Checking ${dependencies.length} dependencies...`)
 
-  const licenseResults: DependencyLicense[] = []
+  const licenseResults = await mapWithConcurrency(
+    dependencies,
+    async (dep, index) => {
+      let license: string | null = null
 
-  for (let index = 0; index < dependencies.length; index++) {
-    const dep = dependencies[index]
-    let license: string | null = null
+      if (usesNpm) {
+        license = await fetchNpmLicense(dep.name, dep.version)
+      }
 
-    if (!dep.name.startsWith("@") && !dep.name.includes("/")) {
-      license = await fetchNpmLicense(dep.name, dep.version)
-    }
+      const category = categorizeLicense(license)
+      const compliant = isLicenseCompliant(license, allowedLicenses)
 
-    const category = categorizeLicense(license)
-    const compliant = isLicenseCompliant(license, allowedLicenses)
-
-    licenseResults.push({
-      name: dep.name,
-      version: dep.version,
-      license,
-      category,
-      compliant,
-    })
-
-    if (dependencies.length > 0) {
       const licenseProgress = 25 + Math.round(((index + 1) / dependencies.length) * 35)
       onProgress?.(licenseProgress, `Checked ${dep.name}`)
-    }
-  }
+
+      return {
+        name: dep.name,
+        version: dep.version,
+        license,
+        category,
+        compliant,
+      } satisfies DependencyLicense
+    },
+    20
+  )
 
   licenseResults.sort((a, b) => {
     if (a.compliant !== b.compliant) {
@@ -153,12 +117,12 @@ export async function scanLicenses(
     return a.name.localeCompare(b.name)
   })
 
-  const nonCompliant = licenseResults.filter((dep) => !dep.compliant)
-  const unknown = licenseResults.filter((dep) => dep.category === "unknown")
+  const unknown = licenseResults.filter((dep) => !dep.license)
+  const nonCompliant = licenseResults.filter((dep) => dep.license && !dep.compliant)
 
   if (nonCompliant.length > 0) {
     issues.push(
-      `${nonCompliant.length} dependenc${nonCompliant.length === 1 ? "y" : "ies"} use non-compliant or restrictive licenses.`
+      `${nonCompliant.length} dependenc${nonCompliant.length === 1 ? "y uses" : "ies use"} non-compliant or restrictive licenses.`
     )
   }
 

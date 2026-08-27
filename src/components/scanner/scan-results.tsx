@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import {
   CheckCircleIcon,
   ShieldWarningIcon,
@@ -16,7 +17,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { ScanResult, Severity } from "@/lib/scanner/types"
+import { isOptionalPlatformPackage } from "@/lib/scanner/licenses"
+import type { DependencyLicense, ScanResult, Severity } from "@/lib/scanner/types"
 
 const severityStyles: Record<Severity, string> = {
   critical: "text-destructive",
@@ -49,7 +51,87 @@ function SummaryCard({
   )
 }
 
+function LicenseTable({ dependencies }: { dependencies: DependencyLicense[] }) {
+  if (dependencies.length === 0) {
+    return <p className="text-description">No packages match the current filters.</p>
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[40rem] text-left text-sm">
+        <thead>
+          <tr className="border-b border-border text-label">
+            <th className="px-3 py-2 font-medium">Package</th>
+            <th className="px-3 py-2 font-medium">Version</th>
+            <th className="px-3 py-2 font-medium">License</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dependencies.map((dep) => (
+            <tr key={`${dep.name}@${dep.version}`} className="border-b border-border/60">
+              <td className="px-3 py-2 font-mono text-xs">{dep.name}</td>
+              <td className="px-3 py-2 text-caption">{dep.version}</td>
+              <td className="px-3 py-2">{dep.license ?? "Unknown"}</td>
+              <td className="px-3 py-2">
+                {dep.compliant ? (
+                  <span className="text-primary">Compliant</span>
+                ) : (
+                  <span className="text-destructive">{dep.category}</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function ScanResults({ result }: { result: ScanResult }) {
+  const [showAllDependencies, setShowAllDependencies] = useState(false)
+  const [hidePlatformPackages, setHidePlatformPackages] = useState(true)
+
+  const licenseDependencies = useMemo(() => {
+    if (!result.license) {
+      return []
+    }
+
+    let deps = result.license.dependencies
+
+    if (hidePlatformPackages) {
+      deps = deps.filter((dep) => !isOptionalPlatformPackage(dep.name))
+    }
+
+    if (!showAllDependencies) {
+      deps = deps.filter((dep) => !dep.compliant)
+    }
+
+    return deps
+  }, [result.license, hidePlatformPackages, showAllDependencies])
+
+  const licenseGroups = useMemo(() => {
+    if (!result.license) {
+      return []
+    }
+
+    const groups = new Map<string, number>()
+
+    for (const dep of result.license.dependencies) {
+      if (hidePlatformPackages && isOptionalPlatformPackage(dep.name)) {
+        continue
+      }
+      if (dep.compliant) {
+        continue
+      }
+
+      const key = dep.license ?? "Unknown"
+      groups.set(key, (groups.get(key) ?? 0) + 1)
+    }
+
+    return Array.from(groups.entries()).sort((a, b) => b[1] - a[1])
+  }, [result.license, hidePlatformPackages])
+
   const secretCount = result.secrets?.findings.length ?? 0
   const licenseIssues = result.license?.summary.nonCompliant ?? 0
   const hasProblems = secretCount > 0 || licenseIssues > 0 || result.errors.length > 0
@@ -58,9 +140,6 @@ export function ScanResults({ result }: { result: ScanResult }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         <h2 className="text-heading-lg">Results for {result.repo}</h2>
-        <p className="text-caption">
-          Scanned at {new Date(result.scannedAt).toLocaleString()}
-        </p>
       </div>
 
       {result.errors.length > 0 ? (
@@ -101,11 +180,70 @@ export function ScanResults({ result }: { result: ScanResult }) {
         </Alert>
       ) : null}
 
-      <Tabs defaultValue={result.secrets ? "secrets" : "licenses"}>
+      <Tabs defaultValue={result.license ? "licenses" : "secrets"}>
         <TabsList>
-          {result.secrets ? <TabsTrigger value="secrets">Secrets</TabsTrigger> : null}
           {result.license ? <TabsTrigger value="licenses">Licenses</TabsTrigger> : null}
+          {result.secrets ? <TabsTrigger value="secrets">Secrets</TabsTrigger> : null}
         </TabsList>
+
+        {result.license ? (
+          <TabsContent value="licenses">
+            <Card>
+              <CardHeader>
+                <CardTitle>License compliance</CardTitle>
+                <CardDescription>
+                  Repository license: {result.license.repoLicense ?? "Unknown"}
+                  {result.license.manifestFiles.length > 0
+                    ? ` · Manifests: ${result.license.manifestFiles.join(", ")}`
+                    : ""}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {result.license.issues.length > 0 ? (
+                  <Alert variant="destructive">
+                    <WarningCircleIcon weight={iconWeight} />
+                    <AlertTitle>Compliance issues</AlertTitle>
+                    <AlertDescription>{result.license.issues.join(" ")}</AlertDescription>
+                  </Alert>
+                ) : null}
+
+                {licenseGroups.length > 0 ? (
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {licenseGroups.map(([license, count]) => (
+                      <div key={license} className="surface-panel flex flex-col gap-1 p-3">
+                        <span className="text-label">{count} packages</span>
+                        <span className="text-sm">{license}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={showAllDependencies}
+                      onChange={(event) => setShowAllDependencies(event.target.checked)}
+                      className="size-4 rounded border border-input"
+                    />
+                    Show all dependencies
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={hidePlatformPackages}
+                      onChange={(event) => setHidePlatformPackages(event.target.checked)}
+                      className="size-4 rounded border border-input"
+                    />
+                    Hide optional platform binaries
+                  </label>
+                </div>
+
+                <LicenseTable dependencies={licenseDependencies} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ) : null}
 
         {result.secrets ? (
           <TabsContent value="secrets">
@@ -150,60 +288,6 @@ export function ScanResults({ result }: { result: ScanResult }) {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        ) : null}
-
-        {result.license ? (
-          <TabsContent value="licenses">
-            <Card>
-              <CardHeader>
-                <CardTitle>License compliance</CardTitle>
-                <CardDescription>
-                  Repository license: {result.license.repoLicense ?? "Unknown"}
-                  {result.license.manifestFiles.length > 0
-                    ? ` · Manifests: ${result.license.manifestFiles.join(", ")}`
-                    : ""}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                {result.license.issues.length > 0 ? (
-                  <Alert variant="destructive">
-                    <WarningCircleIcon weight={iconWeight} />
-                    <AlertTitle>Compliance issues</AlertTitle>
-                    <AlertDescription>{result.license.issues.join(" ")}</AlertDescription>
-                  </Alert>
-                ) : null}
-
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[40rem] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-label">
-                        <th className="px-3 py-2 font-medium">Package</th>
-                        <th className="px-3 py-2 font-medium">Version</th>
-                        <th className="px-3 py-2 font-medium">License</th>
-                        <th className="px-3 py-2 font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.license.dependencies.map((dep) => (
-                        <tr key={`${dep.name}@${dep.version}`} className="border-b border-border/60">
-                          <td className="px-3 py-2 font-mono text-xs">{dep.name}</td>
-                          <td className="px-3 py-2 text-caption">{dep.version}</td>
-                          <td className="px-3 py-2">{dep.license ?? "Unknown"}</td>
-                          <td className="px-3 py-2">
-                            {dep.compliant ? (
-                              <span className="text-primary">Compliant</span>
-                            ) : (
-                              <span className="text-destructive">{dep.category}</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
