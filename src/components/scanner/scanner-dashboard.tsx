@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useState } from "react"
 import { MagnifyingGlassIcon } from "@phosphor-icons/react"
 
@@ -129,7 +130,14 @@ export function ScannerDashboard() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
       <header>
-        <h1 className="text-heading-xl">{siteConfig.name}</h1>
+        <Image
+          src="/logo.png"
+          alt={siteConfig.name}
+          width={180}
+          height={40}
+          className="h-8 w-auto"
+          priority
+        />
       </header>
 
       <Card>
