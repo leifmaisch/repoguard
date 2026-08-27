@@ -1,6 +1,11 @@
 export const siteConfig = {
   name: "RepoGuard",
   description: "GitHub repository security scanner",
+  scanLimits: {
+    maxCommitsWithoutToken: 5,
+    maxCommitsWithToken: 100,
+    defaultCommits: 5,
+  },
   allowedLicenses: [
     "MIT",
     "Apache-2.0",

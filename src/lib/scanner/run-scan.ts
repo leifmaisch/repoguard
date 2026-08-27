@@ -9,6 +9,7 @@ import {
   throwPublicScanError,
   toPublicPartialScanError,
 } from "@/lib/scanner/sanitize-error"
+import { resolveCommitLimit } from "@/lib/scanner/limits"
 import { scanSecrets } from "@/lib/scanner/secret-scanner"
 import type { ScanProgressUpdate, ScanResult } from "@/lib/scanner/types"
 
@@ -53,6 +54,7 @@ export async function runScan(
   onProgress?.({ progress: 15, message: "Repository found" })
 
   const allowedLicenses = parsed.allowedLicenses ?? DEFAULT_ALLOWED_LICENSES
+  const commitLimit = resolveCommitLimit(parsed.commitLimit, parsed.token)
 
   let license = null
   let secrets = null
@@ -72,7 +74,7 @@ export async function runScan(
   if (parsed.scanSecrets) {
     try {
       onProgress?.({ progress: 60, message: "Fetching commit history..." })
-      secrets = await scanSecrets(octokit, owner, repo, parsed.commitLimit, (progress, message) => {
+      secrets = await scanSecrets(octokit, owner, repo, commitLimit, (progress, message) => {
         onProgress?.({ progress, message })
       })
     } catch (error) {

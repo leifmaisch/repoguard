@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { ScanResult } from "@/lib/scanner/types"
+import { resolveCommitLimit } from "@/lib/scanner/limits"
 
 import { ScanOption } from "./scan-option"
 import { ScanProgressBar } from "./scan-progress"
@@ -82,7 +83,7 @@ export function ScannerDashboard() {
 
   const [repo, setRepo] = useState("")
   const [token, setToken] = useState("")
-  const [commitLimit, setCommitLimit] = useState("30")
+  const [commitLimit, setCommitLimit] = useState(String(siteConfig.scanLimits.defaultCommits))
   const [scanLicense, setScanLicense] = useState(true)
   const [scanSecrets, setScanSecrets] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -90,6 +91,37 @@ export function ScannerDashboard() {
   const [progressMessage, setProgressMessage] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ScanResult | null>(null)
+
+  const hasToken = token.trim().length > 0
+  const maxCommits = hasToken
+    ? siteConfig.scanLimits.maxCommitsWithToken
+    : siteConfig.scanLimits.maxCommitsWithoutToken
+
+  function handleTokenChange(value: string) {
+    setToken(value)
+
+    if (!value.trim()) {
+      setCommitLimit((current) => {
+        const parsed = Number.parseInt(current, 10)
+        const next = Number.isNaN(parsed)
+          ? siteConfig.scanLimits.defaultCommits
+          : Math.min(parsed, siteConfig.scanLimits.maxCommitsWithoutToken)
+
+        return String(next)
+      })
+    }
+  }
+
+  function handleCommitLimitChange(value: string) {
+    const parsed = Number.parseInt(value, 10)
+
+    if (Number.isNaN(parsed)) {
+      setCommitLimit(value)
+      return
+    }
+
+    setCommitLimit(String(Math.min(Math.max(parsed, 1), maxCommits)))
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -108,7 +140,7 @@ export function ScannerDashboard() {
           token: token || undefined,
           scanLicense,
           scanSecrets,
-          commitLimit: Number.parseInt(commitLimit, 10),
+          commitLimit: resolveCommitLimit(Number.parseInt(commitLimit, 10) || siteConfig.scanLimits.defaultCommits, token),
           allowedLicenses: [...siteConfig.allowedLicenses],
           stream: true,
         }),
@@ -177,7 +209,7 @@ export function ScannerDashboard() {
                 type="password"
                 placeholder="ghp_..."
                 value={token}
-                onChange={(event) => setToken(event.target.value)}
+                onChange={(event) => handleTokenChange(event.target.value)}
                 autoComplete="off"
                 aria-describedby={tokenHintId}
               />
@@ -209,16 +241,18 @@ export function ScannerDashboard() {
                 name="commitLimit"
                 type="number"
                 min={1}
-                max={100}
+                max={maxCommits}
                 value={commitLimit}
-                onChange={(event) => setCommitLimit(event.target.value)}
+                onChange={(event) => handleCommitLimitChange(event.target.value)}
                 disabled={!scanSecrets}
                 aria-describedby={commitHintId}
                 className="w-full sm:max-w-xs"
               />
               <p id={commitHintId} className="text-caption">
                 {scanSecrets
-                  ? "Scan recent commit diffs for leaked secrets."
+                  ? hasToken
+                    ? "Scan up to 100 recent commit diffs for leaked secrets."
+                    : "Without a token, up to 5 commits can be scanned."
                   : "Enable commit secret scanner to configure commit count."}
               </p>
             </div>
