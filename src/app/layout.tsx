@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next"
 
-import { ScannerDashboard } from "@/components/scanner/scanner-dashboard"
 import { siteConfig } from "@/config/site"
 import { leguanFontVariables } from "@/lib/fonts"
 
